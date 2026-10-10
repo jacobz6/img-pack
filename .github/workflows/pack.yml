@@ -1,0 +1,24 @@
+name: pack-docker-images
+on:
+  workflow_dispatch:          # 只手动触发, 不需要 push
+permissions:
+  contents: write             # 建 release 需要
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: pull & save
+        run: |
+          set -e
+          docker pull healthchecks/healthchecks:v3.9
+          docker pull webhookx/webhookx:latest
+          docker save -o img.tar healthchecks/healthchecks:v3.9 webhookx/webhookx:latest
+          ls -lh img.tar
+      - name: 发布为 release 资产
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1 img.tar \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "docker images tar" \
+            --notes "offline tar (healthchecks + webhookx)"
