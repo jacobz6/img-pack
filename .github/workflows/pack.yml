@@ -1,24 +1,48 @@
 name: pack-docker-images
+
 on:
-  workflow_dispatch:          # 只手动触发, 不需要 push
+  workflow_dispatch:
+    inputs:
+      images:
+        description: "要打包的镜像, 空格分隔 (如 'python:3.11-slim nginx:alpine')"
+        required: true
+        default: ""
+      tag:
+        description: "release tag; 填 auto 自动用时间戳 (永不撞名)"
+        required: true
+        default: "auto"
+
 permissions:
-  contents: write             # 建 release 需要
+  contents: write          # 创建 release 需要
+
 jobs:
   pack:
     runs-on: ubuntu-latest
     steps:
       - name: pull & save
+        env:
+          IMAGES: ${{ inputs.images }}
         run: |
           set -e
-          docker pull healthchecks/healthchecks:v3.9
-          docker pull webhookx/webhookx:latest
-          docker save -o img.tar healthchecks/healthchecks:v3.9 webhookx/webhookx:latest
+          [ -n "$IMAGES" ] || { echo "✗ images 输入为空, Run workflow 时填镜像列表"; exit 1; }
+          for img in $IMAGES; do
+            echo ":: pulling $img"
+            docker pull "$img"
+          done
+          docker save -o img.tar $IMAGES
           ls -lh img.tar
+
       - name: 发布为 release 资产
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          gh release create v1 img.tar \
+          TAG="$INPUT_TAG"
+          if [ -z "$TAG" ] || [ "$TAG" = "auto" ]; then
+            TAG="v$(date +%Y%m%d-%H%M)"
+          fi
+          echo ":: release tag = $TAG"
+          gh release create "$TAG" img.tar \
             --repo "$GITHUB_REPOSITORY" \
-            --title "docker images tar" \
-            --notes "offline tar (healthchecks + webhookx)"
+            --title "docker images tar $TAG" \
+            --notes "offline tar: ${{ inputs.images }}"
